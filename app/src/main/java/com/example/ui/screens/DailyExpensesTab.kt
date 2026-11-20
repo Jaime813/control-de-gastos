@@ -62,8 +62,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.model.CategoryConfig
+import com.example.model.CategoryResolver
 import com.example.model.Expense
-import com.example.model.ExpenseCategory
 import com.example.model.UserSettings
 import com.example.ui.components.CurrentWeekSummaryCard
 import com.example.ui.theme.JetBrainsMonoFamily
@@ -73,15 +74,17 @@ import com.example.util.DateFormatUtils
 @Composable
 fun DailyExpensesTab(
     expenses: List<Expense>,
+    categories: List<CategoryConfig>,
     settings: UserSettings,
     selectedDateKey: String,
-    selectedCategoryFilter: ExpenseCategory?,
+    selectedCategoryFilter: String?,
     onShiftDay: (Int) -> Unit,
     onSelectDate: (String) -> Unit,
-    onSelectCategoryFilter: (ExpenseCategory?) -> Unit,
+    onSelectCategoryFilter: (String?) -> Unit,
     onEditExpense: (Expense) -> Unit,
     onDeleteExpense: (Expense) -> Unit,
     onOpenBudgetSettings: () -> Unit,
+    onOpenCategorySettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
@@ -89,9 +92,15 @@ fun DailyExpensesTab(
     val dayExpenses = remember(expenses, selectedDateKey) {
         expenses.filter { it.dateKey == selectedDateKey }
     }
+    val filterCategories = remember(categories, dayExpenses) {
+        val usedIds = dayExpenses.map { it.categoryId }.toSet()
+        val known = categories.filter { it.isEnabled || it.id in usedIds }
+        val knownIds = known.map { it.id }.toSet()
+        known + (usedIds - knownIds).map { CategoryResolver.resolve(it, categories) }
+    }
     val filteredDayExpenses = remember(dayExpenses, selectedCategoryFilter) {
         if (selectedCategoryFilter == null) dayExpenses
-        else dayExpenses.filter { it.categoryEnum == selectedCategoryFilter }
+        else dayExpenses.filter { it.categoryId == selectedCategoryFilter }
     }
 
     val dayTotal = remember(dayExpenses) { dayExpenses.sumOf { it.amount } }
@@ -159,12 +168,12 @@ fun DailyExpensesTab(
                             )
                         )
                     }
-                    items(ExpenseCategory.entries, key = { it.name }) { category ->
-                        val count = dayExpenses.count { it.categoryEnum == category }
-                        val isSelected = selectedCategoryFilter == category
+                    items(filterCategories, key = { it.id }) { category ->
+                        val count = dayExpenses.count { it.categoryId == category.id }
+                        val isSelected = selectedCategoryFilter == category.id
                         FilterChip(
                             selected = isSelected,
-                            onClick = { onSelectCategoryFilter(category) },
+                            onClick = { onSelectCategoryFilter(category.id) },
                             leadingIcon = {
                                 Icon(
                                     imageVector = category.icon,
@@ -179,10 +188,28 @@ fun DailyExpensesTab(
                             }
                         )
                     }
+                    item(key = "filter_manage_categories") {
+                        FilterChip(
+                            selected = false,
+                            onClick = onOpenCategorySettings,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text("Categorías") }
+                        )
+                    }
                 }
             }
 
             item(key = "list_header") {
+                val activeCatLabel = selectedCategoryFilter?.let {
+                    CategoryResolver.resolve(it, categories).label
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -191,10 +218,10 @@ fun DailyExpensesTab(
                         .padding(start = 4.dp, end = 4.dp, top = 4.dp)
                 ) {
                     Text(
-                        text = if (selectedCategoryFilter == null) {
+                        text = if (activeCatLabel == null) {
                             "Movimientos del día"
                         } else {
-                            "Movimientos • ${selectedCategoryFilter.label}"
+                            "Movimientos • $activeCatLabel"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground
@@ -225,8 +252,10 @@ fun DailyExpensesTab(
                     items = filteredDayExpenses,
                     key = { it.id.ifBlank { "${it.dateKey}_${it.title}_${it.amount}" } }
                 ) { expense ->
+                    val resolvedCategory = CategoryResolver.resolve(expense.categoryId, categories)
                     ExpenseItemCard(
                         expense = expense,
+                        category = resolvedCategory,
                         currencySymbol = symbol,
                         onClick = { onEditExpense(expense) },
                         onDeleteClick = { onDeleteExpense(expense) }
@@ -500,11 +529,11 @@ private fun DailyHeroControlCard(
 @Composable
 private fun ExpenseItemCard(
     expense: Expense,
+    category: CategoryConfig,
     currencySymbol: String,
     onClick: () -> Unit,
     onDeleteClick: () -> Unit,
 ) {
-    val category = expense.categoryEnum
 
     Surface(
         shape = RoundedCornerShape(18.dp),

@@ -4,8 +4,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ExpenseDataSource
+import com.example.data.local.CategoryConfigRepository
+import com.example.model.CategoryConfig
+import com.example.model.CategoryResolver
 import com.example.model.Expense
-import com.example.model.ExpenseCategory
 import com.example.model.PaymentMethod
 import com.example.model.UiState
 import com.example.model.UserSettings
@@ -22,21 +24,52 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class HistoryPeriodFilter(val label: String) {
+    ALL("Todo"),
+    THIS_MONTH("Este mes"),
+    LAST_7_DAYS("Últimos 7 días"),
+    TODAY("Hoy"),
+}
+
 data class ExpenseDashboardUiState(
     val selectedDateKey: String = DateFormatUtils.todayDateKey(),
     val selectedMonthKey: String = DateFormatUtils.currentMonthKey(),
-    val selectedCategoryFilter: ExpenseCategory? = null,
+    val selectedCategoryFilter: String? = null,
+    val historyCategoryFilter: String? = null,
+    val historySearchQuery: String = "",
+    val historyPeriodFilter: HistoryPeriodFilter = HistoryPeriodFilter.ALL,
     val isSaving: Boolean = false,
     val snackbarMessage: String? = null,
 )
 
 class ExpenseViewModel(
     private val dataSource: ExpenseDataSource,
+    private val categoryRepository: CategoryConfigRepository,
     private val currentSessionId: String,
 ) : ViewModel() {
 
     private val _controls = MutableStateFlow(ExpenseDashboardUiState())
     val controls: StateFlow<ExpenseDashboardUiState> = _controls.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            runCatching { categoryRepository.ensureSeeded() }
+                .onFailure { Log.w(TAG, "Error seeding categories in Room", it) }
+        }
+    }
+
+    val categoriesState: StateFlow<List<CategoryConfig>> =
+        categoryRepository.observeCategories()
+            .catch { error ->
+                if (error is CancellationException) throw error
+                Log.w(TAG, "Error observing Room categories", error)
+                emit(CategoryResolver.defaultConfigs())
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = CategoryResolver.defaultConfigs()
+            )
 
     val expensesState: StateFlow<UiState<List<Expense>>> =
         dataSource.observeExpenses()
@@ -94,10 +127,39 @@ class ExpenseViewModel(
         }
     }
 
-    fun selectCategoryFilter(category: ExpenseCategory?) {
+    fun selectCategoryFilter(categoryId: String?) {
         _controls.update { state ->
-            val next = if (state.selectedCategoryFilter == category) null else category
+            val next = if (state.selectedCategoryFilter == categoryId) null else categoryId
             state.copy(selectedCategoryFilter = next)
+        }
+    }
+
+    fun selectHistoryCategoryFilter(categoryId: String?) {
+        _controls.update { state ->
+            val next = if (categoryId != null && state.historyCategoryFilter == categoryId) null else categoryId
+            state.copy(historyCategoryFilter = next)
+        }
+    }
+
+    fun setHistoryCategoryDirect(categoryId: String?) {
+        _controls.update { it.copy(historyCategoryFilter = categoryId) }
+    }
+
+    fun setHistorySearchQuery(query: String) {
+        _controls.update { it.copy(historySearchQuery = query) }
+    }
+
+    fun setHistoryPeriodFilter(period: HistoryPeriodFilter) {
+        _controls.update { it.copy(historyPeriodFilter = period) }
+    }
+
+    fun clearHistoryFilters() {
+        _controls.update {
+            it.copy(
+                historyCategoryFilter = null,
+                historySearchQuery = "",
+                historyPeriodFilter = HistoryPeriodFilter.ALL
+            )
         }
     }
 
@@ -112,7 +174,8 @@ class ExpenseViewModel(
     fun addExpense(
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -126,7 +189,8 @@ class ExpenseViewModel(
             val result = dataSource.addExpense(
                 title = title,
                 amount = amount,
-                category = category,
+                categoryId = categoryId,
+                categoryLabel = categoryLabel,
                 dateKey = dateKey,
                 note = note,
                 paymentMethod = paymentMethod,
@@ -166,7 +230,8 @@ class ExpenseViewModel(
         expenseId: String,
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -181,7 +246,8 @@ class ExpenseViewModel(
                 expenseId = expenseId,
                 title = title,
                 amount = amount,
-                category = category,
+                categoryId = categoryId,
+                categoryLabel = categoryLabel,
                 dateKey = dateKey,
                 note = note,
                 paymentMethod = paymentMethod,
@@ -284,6 +350,102 @@ class ExpenseViewModel(
                             isSaving = false,
                             snackbarMessage = error.localizedMessage ?: "Error al guardar la configuración"
                         )
+                    }
+                }
+            )
+        }
+    }
+
+    fun saveCategoryConfig(
+        id: String?,
+        label: String,
+        iconKey: String,
+        colorHex: Long,
+        isEnabled: Boolean,
+        monthlyLimit: Double,
+        onDone: () -> Unit = {},
+    ) {
+        viewModelScope.launch {
+            _controls.update { it.copy(isSaving = true) }
+            val result = categoryRepository.saveCategory(
+                id = id,
+                label = label,
+                iconKey = iconKey,
+                colorHex = colorHex,
+                isEnabled = isEnabled,
+                monthlyLimit = monthlyLimit,
+            )
+            result.fold(
+                onSuccess = {
+                    _controls.update {
+                        it.copy(
+                            isSaving = false,
+                            snackbarMessage = if (id == null) "Categoría creada en Room" else "Categoría actualizada"
+                        )
+                    }
+                    onDone()
+                },
+                onFailure = { error ->
+                    _controls.update {
+                        it.copy(
+                            isSaving = false,
+                            snackbarMessage = error.localizedMessage ?: "No se pudo guardar la categoría"
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun toggleCategoryEnabled(categoryId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val result = categoryRepository.setCategoryEnabled(categoryId, enabled)
+            result.onFailure { error ->
+                _controls.update {
+                    it.copy(snackbarMessage = error.localizedMessage ?: "No se pudo actualizar la categoría")
+                }
+            }
+        }
+    }
+
+    fun deleteCustomCategory(categoryId: String) {
+        viewModelScope.launch {
+            val result = categoryRepository.deleteCustomCategory(categoryId)
+            result.fold(
+                onSuccess = {
+                    _controls.update { state ->
+                        state.copy(
+                            selectedCategoryFilter = if (state.selectedCategoryFilter == categoryId) null else state.selectedCategoryFilter,
+                            historyCategoryFilter = if (state.historyCategoryFilter == categoryId) null else state.historyCategoryFilter,
+                            snackbarMessage = "Categoría eliminada"
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _controls.update {
+                        it.copy(snackbarMessage = error.localizedMessage ?: "No se pudo eliminar la categoría")
+                    }
+                }
+            )
+        }
+    }
+
+    fun resetCategoryDefaults() {
+        viewModelScope.launch {
+            val result = categoryRepository.resetDefaults()
+            result.fold(
+                onSuccess = {
+                    _controls.update {
+                        it.copy(
+                            selectedCategoryFilter = null,
+                            historyCategoryFilter = null,
+                            snackbarMessage = "Categorías predeterminadas restauradas"
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _controls.update {
+                        it.copy(snackbarMessage = error.localizedMessage ?: "No se pudieron restaurar las categorías")
                     }
                 }
             )

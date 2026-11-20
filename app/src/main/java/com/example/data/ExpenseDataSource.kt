@@ -1,7 +1,6 @@
 package com.example.data
 
 import com.example.model.Expense
-import com.example.model.ExpenseCategory
 import com.example.model.PaymentMethod
 import com.example.model.UserSettings
 import kotlinx.coroutines.flow.Flow
@@ -13,7 +12,8 @@ interface ExpenseDataSource {
     suspend fun addExpense(
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod = PaymentMethod.CASH,
@@ -26,7 +26,8 @@ interface ExpenseDataSource {
         expenseId: String,
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod = PaymentMethod.CASH,
@@ -61,7 +62,8 @@ class FirestoreExpenseDataSource(
     override suspend fun addExpense(
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -72,7 +74,8 @@ class FirestoreExpenseDataSource(
         userId = userId,
         title = title,
         amount = amount,
-        category = category,
+        categoryId = categoryId,
+        categoryLabel = categoryLabel,
         dateKey = dateKey,
         note = note,
         paymentMethod = paymentMethod,
@@ -85,7 +88,8 @@ class FirestoreExpenseDataSource(
         expenseId: String,
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -97,7 +101,8 @@ class FirestoreExpenseDataSource(
         expenseId = expenseId,
         title = title,
         amount = amount,
-        category = category,
+        categoryId = categoryId,
+        categoryLabel = categoryLabel,
         dateKey = dateKey,
         note = note,
         paymentMethod = paymentMethod,

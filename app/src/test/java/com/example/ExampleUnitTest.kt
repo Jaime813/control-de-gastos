@@ -1,5 +1,8 @@
 package com.example
 
+import com.example.model.CategoryConfig
+import com.example.model.CategoryIconOption
+import com.example.model.CategoryResolver
 import com.example.model.CurrencyCatalog
 import com.example.model.Expense
 import com.example.model.ExpenseCategory
@@ -67,6 +70,29 @@ class ExampleUnitTest {
         assertEquals(ExpenseCategory.FOOD, ExpenseCategory.fromRaw("FOOD"))
         assertEquals(ExpenseCategory.OTHER, ExpenseCategory.fromRaw("UNKNOWN_VALUE"))
         assertEquals(ExpenseCategory.OTHER, ExpenseCategory.fromRaw(null))
+    }
+
+    @Test
+    fun `category resolver defaults and custom category resolution work properly`() {
+        val defaults = CategoryResolver.defaultConfigs()
+        assertEquals(8, defaults.size)
+        assertEquals("Comida", defaults.first { it.id == "FOOD" }.label)
+        assertEquals("Transporte", defaults.first { it.id == "TRANSPORT" }.label)
+        assertEquals("Vivienda", defaults.first { it.id == "HOME" }.label)
+
+        val custom = CategoryConfig(
+            id = "CAT_EDUCACION_A1B2C3",
+            label = "Educación",
+            iconKey = CategoryIconOption.SCHOOL.name,
+            colorHex = 0xFF9B5DE5L,
+            isDefault = false
+        )
+        val resolved = CategoryResolver.resolve("CAT_EDUCACION_A1B2C3", defaults + custom)
+        assertEquals("Educación", resolved.label)
+        assertEquals(CategoryIconOption.SCHOOL.icon, resolved.icon)
+
+        val fallback = CategoryResolver.resolve("MISSING_CAT", defaults)
+        assertEquals("OTHER", fallback.id)
     }
 
     @Test

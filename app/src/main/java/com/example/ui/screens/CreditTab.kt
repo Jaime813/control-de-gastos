@@ -47,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.model.CategoryConfig
+import com.example.model.CategoryResolver
 import com.example.model.Expense
 import com.example.model.UserSettings
 import com.example.ui.theme.JetBrainsMonoFamily
@@ -62,6 +64,7 @@ private data class CardSummary(
 @Composable
 fun CreditTab(
     expenses: List<Expense>,
+    categories: List<CategoryConfig>,
     settings: UserSettings,
     onEditExpense: (Expense) -> Unit,
     onToggleSettled: (Expense) -> Unit,
@@ -423,8 +426,10 @@ fun CreditTab(
                     items = displayedExpenses,
                     key = { it.id.ifBlank { "${it.dateKey}_${it.title}_${it.amount}" } }
                 ) { expense ->
+                    val resolvedCategory = CategoryResolver.resolve(expense.categoryId, categories)
                     CreditPurchaseItemCard(
                         expense = expense,
+                        category = resolvedCategory,
                         currencySymbol = symbol,
                         onClick = { onEditExpense(expense) },
                         onToggleSettled = { onToggleSettled(expense) }
@@ -438,11 +443,11 @@ fun CreditTab(
 @Composable
 private fun CreditPurchaseItemCard(
     expense: Expense,
+    category: CategoryConfig,
     currencySymbol: String,
     onClick: () -> Unit,
     onToggleSettled: () -> Unit,
 ) {
-    val category = expense.categoryEnum
     val cardLabel = expense.cardName?.takeIf { it.isNotBlank() } ?: "Tarjeta de crédito"
     val installmentsText = if (expense.safeInstallments > 1) {
         "${expense.safeInstallments} cuotas de ${

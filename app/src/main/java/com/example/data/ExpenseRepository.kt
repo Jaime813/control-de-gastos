@@ -3,7 +3,6 @@ package com.example.data
 import android.content.Context
 import com.example.R
 import com.example.model.Expense
-import com.example.model.ExpenseCategory
 import com.example.model.PaymentMethod
 import com.example.model.UserSettings
 import com.example.util.DateFormatUtils
@@ -113,7 +112,8 @@ class ExpenseRepository(
         userId: String,
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod = PaymentMethod.CASH,
@@ -130,7 +130,8 @@ class ExpenseRepository(
             require(DateFormatUtils.isValidDateKey(dateKey)) {
                 "Fecha inválida."
             }
-            val cleanTitle = title.trim().ifBlank { category.label }.take(80)
+            val cleanCategoryId = categoryId.trim().take(40).ifBlank { "OTHER" }
+            val cleanTitle = title.trim().ifBlank { categoryLabel.ifBlank { "Gasto" } }.take(80)
             val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }?.take(160)
             val cleanCardName = if (paymentMethod == PaymentMethod.CREDIT_CARD) {
                 cardName?.trim()?.takeIf { it.isNotEmpty() }?.take(40)
@@ -151,7 +152,7 @@ class ExpenseRepository(
                 "userId" to uid,
                 "title" to cleanTitle,
                 "amount" to amount,
-                "category" to category.name,
+                "category" to cleanCategoryId,
                 "dateKey" to dateKey,
                 "monthKey" to monthKey,
                 "note" to cleanNote,
@@ -178,7 +179,8 @@ class ExpenseRepository(
         expenseId: String,
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod = PaymentMethod.CASH,
@@ -196,7 +198,8 @@ class ExpenseRepository(
             require(DateFormatUtils.isValidDateKey(dateKey)) {
                 "Fecha inválida."
             }
-            val cleanTitle = title.trim().ifBlank { category.label }.take(80)
+            val cleanCategoryId = categoryId.trim().take(40).ifBlank { "OTHER" }
+            val cleanTitle = title.trim().ifBlank { categoryLabel.ifBlank { "Gasto" } }.take(80)
             val cleanNote = note?.trim()?.take(160) ?: ""
             val cleanCardName = if (paymentMethod == PaymentMethod.CREDIT_CARD) {
                 cardName?.trim()?.take(40) ?: ""
@@ -217,7 +220,7 @@ class ExpenseRepository(
                 mapOf(
                     "title" to cleanTitle,
                     "amount" to amount,
-                    "category" to category.name,
+                    "category" to cleanCategoryId,
                     "dateKey" to dateKey,
                     "monthKey" to monthKey,
                     "note" to cleanNote,

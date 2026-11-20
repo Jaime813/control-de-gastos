@@ -9,6 +9,7 @@
     <string name="label_connect_google">Conectar con Google</string>
     <string name="label_exit_guest">Salir de modo invitado</string>
     <string name="tab_today">Hoy</string>
+    <string name="tab_history">Historial</string>
     <string name="tab_credit">Crédito</string>
     <string name="tab_summary">Resumen</string>
     <string name="fab_new_expense">Nuevo gasto</string>
@@ -17,6 +18,7 @@
     <string name="label_this_month">Este mes</string>
     <string name="label_daily_budget">Presupuesto diario</string>
     <string name="label_set_budget">Meta diaria y moneda</string>
+    <string name="label_manage_categories">Categorías de gastos</string>
     <string name="label_sign_out">Cerrar sesión</string>
     <string name="empty_day_title">Sin gastos registrados</string>
     <string name="empty_day_subtitle">Toca el botón "Nuevo gasto" para anotar tu primer gasto de este día.</string>

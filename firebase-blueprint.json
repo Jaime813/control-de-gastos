@@ -49,8 +49,7 @@
         },
         "category": {
           "type": "string",
-          "enum": ["FOOD", "TRANSPORT", "HOME", "SHOPPING", "HEALTH", "LEISURE", "BILLS", "OTHER"],
-          "description": "Categoría del gasto."
+          "description": "Identificador de la categoría del gasto (predeterminada o personalizada configurada en Room, máximo 40 caracteres)."
         },
         "dateKey": {
           "type": "string",

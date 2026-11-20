@@ -13,8 +13,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.data.ExpenseDataSource
+import com.example.model.CategoryConfig
 import com.example.model.Expense
-import com.example.model.ExpenseCategory
 import com.example.model.PaymentMethod
 import com.example.model.UserSettings
 import com.example.util.DateFormatUtils
@@ -48,6 +48,29 @@ data class LocalSettingsEntity(
     val currencySymbol: String = "$",
 )
 
+@Entity(tableName = "category_configs")
+data class LocalCategoryConfigEntity(
+    @PrimaryKey val id: String,
+    val label: String,
+    val iconKey: String,
+    val colorHex: Long,
+    val isEnabled: Boolean = true,
+    val isDefault: Boolean = false,
+    val sortOrder: Int = 0,
+    val monthlyLimit: Double = 0.0,
+) {
+    fun toModel(): CategoryConfig = CategoryConfig(
+        id = id,
+        label = label,
+        iconKey = iconKey,
+        colorHex = colorHex,
+        isEnabled = isEnabled,
+        isDefault = isDefault,
+        sortOrder = sortOrder,
+        monthlyLimit = monthlyLimit,
+    )
+}
+
 @Dao
 interface GuestExpenseDao {
     @Query("SELECT * FROM guest_expenses ORDER BY dateKey DESC, createdAtMillis DESC")
@@ -72,13 +95,45 @@ interface GuestExpenseDao {
     suspend fun upsertSettings(settings: LocalSettingsEntity)
 }
 
+@Dao
+interface CategoryConfigDao {
+    @Query("SELECT * FROM category_configs ORDER BY sortOrder ASC, label ASC")
+    fun observeAllCategories(): Flow<List<LocalCategoryConfigEntity>>
+
+    @Query("SELECT COUNT(*) FROM category_configs")
+    suspend fun getCategoryCount(): Int
+
+    @Query("SELECT * FROM category_configs WHERE id = :categoryId LIMIT 1")
+    suspend fun getCategoryById(categoryId: String): LocalCategoryConfigEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCategory(category: LocalCategoryConfigEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAllIgnore(categories: List<LocalCategoryConfigEntity>)
+
+    @Query("UPDATE category_configs SET isEnabled = :enabled WHERE id = :categoryId")
+    suspend fun setCategoryEnabled(categoryId: String, enabled: Boolean)
+
+    @Query("DELETE FROM category_configs WHERE id = :categoryId")
+    suspend fun deleteCategoryById(categoryId: String)
+
+    @Query("DELETE FROM category_configs")
+    suspend fun deleteAllCategories()
+}
+
 @Database(
-    entities = [LocalExpenseEntity::class, LocalSettingsEntity::class],
-    version = 2,
+    entities = [
+        LocalExpenseEntity::class,
+        LocalSettingsEntity::class,
+        LocalCategoryConfigEntity::class,
+    ],
+    version = 3,
     exportSchema = false,
 )
 abstract class GuestExpenseDatabase : RoomDatabase() {
     abstract fun guestExpenseDao(): GuestExpenseDao
+    abstract fun categoryConfigDao(): CategoryConfigDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -87,6 +142,26 @@ abstract class GuestExpenseDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE guest_expenses ADD COLUMN cardName TEXT")
                 db.execSQL("ALTER TABLE guest_expenses ADD COLUMN installments INTEGER NOT NULL DEFAULT 1")
                 db.execSQL("ALTER TABLE guest_expenses ADD COLUMN creditSettled INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `category_configs` (
+                        `id` TEXT NOT NULL,
+                        `label` TEXT NOT NULL,
+                        `iconKey` TEXT NOT NULL,
+                        `colorHex` INTEGER NOT NULL,
+                        `isEnabled` INTEGER NOT NULL DEFAULT 1,
+                        `isDefault` INTEGER NOT NULL DEFAULT 0,
+                        `sortOrder` INTEGER NOT NULL DEFAULT 0,
+                        `monthlyLimit` REAL NOT NULL DEFAULT 0.0,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
             }
         }
 
@@ -100,7 +175,7 @@ abstract class GuestExpenseDatabase : RoomDatabase() {
                     GuestExpenseDatabase::class.java,
                     "gasto_diario_guest.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }
@@ -147,7 +222,8 @@ class LocalGuestRepository(
     override suspend fun addExpense(
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -162,7 +238,8 @@ class LocalGuestRepository(
             "Fecha inválida."
         }
         val now = System.currentTimeMillis()
-        val cleanTitle = title.trim().ifBlank { category.label }.take(80)
+        val cleanCategoryId = categoryId.trim().take(40).ifBlank { "OTHER" }
+        val cleanTitle = title.trim().ifBlank { categoryLabel.ifBlank { "Gasto" } }.take(80)
         val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }?.take(160)
         val cleanCardName = if (paymentMethod == PaymentMethod.CREDIT_CARD) {
             cardName?.trim()?.takeIf { it.isNotEmpty() }?.take(40)
@@ -177,7 +254,7 @@ class LocalGuestRepository(
                 id = UUID.randomUUID().toString(),
                 title = cleanTitle,
                 amount = amount,
-                category = category.name,
+                category = cleanCategoryId,
                 dateKey = dateKey,
                 monthKey = dateKey.take(7),
                 note = cleanNote,
@@ -200,7 +277,8 @@ class LocalGuestRepository(
         expenseId: String,
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -217,7 +295,8 @@ class LocalGuestRepository(
         }
         val existing = dao.getExpenseById(expenseId)
         val now = System.currentTimeMillis()
-        val cleanTitle = title.trim().ifBlank { category.label }.take(80)
+        val cleanCategoryId = categoryId.trim().take(40).ifBlank { "OTHER" }
+        val cleanTitle = title.trim().ifBlank { categoryLabel.ifBlank { "Gasto" } }.take(80)
         val cleanNote = note?.trim()?.takeIf { it.isNotEmpty() }?.take(160)
         val cleanCardName = if (paymentMethod == PaymentMethod.CREDIT_CARD) {
             cardName?.trim()?.takeIf { it.isNotEmpty() }?.take(40)
@@ -232,7 +311,7 @@ class LocalGuestRepository(
                 id = expenseId,
                 title = cleanTitle,
                 amount = amount,
-                category = category.name,
+                category = cleanCategoryId,
                 dateKey = dateKey,
                 monthKey = dateKey.take(7),
                 note = cleanNote,

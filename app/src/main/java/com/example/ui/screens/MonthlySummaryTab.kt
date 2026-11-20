@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -49,15 +50,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.model.CategoryConfig
+import com.example.model.CategoryResolver
 import com.example.model.Expense
-import com.example.model.ExpenseCategory
 import com.example.model.UserSettings
 import com.example.ui.theme.JetBrainsMonoFamily
 import com.example.util.DateFormatUtils
 import kotlin.math.roundToInt
 
 private data class CategoryBreakdown(
-    val category: ExpenseCategory,
+    val category: CategoryConfig,
     val total: Double,
     val count: Int,
     val percentage: Float,
@@ -66,9 +68,11 @@ private data class CategoryBreakdown(
 @Composable
 fun MonthlySummaryTab(
     expenses: List<Expense>,
+    categories: List<CategoryConfig>,
     settings: UserSettings,
     selectedMonthKey: String,
     onShiftMonth: (Int) -> Unit,
+    onCategoryClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val symbol = settings.currencySymbol.ifBlank { "$" }
@@ -84,15 +88,15 @@ fun MonthlySummaryTab(
         if (monthExpenses.isEmpty()) 0.0 else monthTotal / activeDaysCount
     }
 
-    val categoryBreakdowns = remember(monthExpenses, monthTotal) {
+    val categoryBreakdowns = remember(monthExpenses, monthTotal, categories) {
         if (monthTotal <= 0.0) emptyList()
         else {
             monthExpenses
-                .groupBy { it.categoryEnum }
-                .map { (cat, list) ->
+                .groupBy { it.categoryId }
+                .map { (catId, list) ->
                     val sum = list.sumOf { it.amount }
                     CategoryBreakdown(
-                        category = cat,
+                        category = CategoryResolver.resolve(catId, categories),
                         total = sum,
                         count = list.size,
                         percentage = (sum / monthTotal).toFloat().coerceIn(0f, 1f)
@@ -269,8 +273,12 @@ fun MonthlySummaryTab(
                     }
                 }
             } else {
-                items(categoryBreakdowns, key = { it.category.name }) { item ->
-                    CategoryBreakdownRow(item = item, currencySymbol = symbol)
+                items(categoryBreakdowns, key = { it.category.id }) { item ->
+                    CategoryBreakdownRow(
+                        item = item,
+                        currencySymbol = symbol,
+                        onClick = { onCategoryClick(item.category.id) }
+                    )
                 }
             }
         }
@@ -432,6 +440,7 @@ private fun SevenDayBarChartCard(
 private fun CategoryBreakdownRow(
     item: CategoryBreakdown,
     currencySymbol: String,
+    onClick: () -> Unit,
 ) {
     val animatedPct by animateFloatAsState(
         targetValue = item.percentage,
@@ -444,7 +453,10 @@ private fun CategoryBreakdownRow(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -472,8 +484,15 @@ private fun CategoryBreakdownRow(
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    val subtitle = buildString {
+                        append("${item.count} ${if (item.count == 1) "gasto" else "gastos"} • $pctInt%")
+                        if (item.category.monthlyLimit > 0.0) {
+                            append(" • Límite ")
+                            append(DateFormatUtils.formatCurrencyCompact(item.category.monthlyLimit, currencySymbol))
+                        }
+                    }
                     Text(
-                        text = "${item.count} ${if (item.count == 1) "gasto" else "gastos"} • $pctInt%",
+                        text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -21,12 +21,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PersonOutline
 import androidx.compose.material.icons.rounded.Tune
@@ -78,6 +81,7 @@ import com.example.auth.onGoogleSignInClicked
 import com.example.auth.signOutUser
 import com.example.data.ExpenseRepository
 import com.example.data.FirestoreExpenseDataSource
+import com.example.data.local.CategoryConfigRepository
 import com.example.data.local.GuestExpenseDatabase
 import com.example.data.local.LocalGuestRepository
 import com.example.model.Expense
@@ -162,15 +166,16 @@ private fun ExpenseControlRoot(
                 val app = checkNotNull(this[APPLICATION_KEY]) {
                     "APPLICATION_KEY missing from CreationExtras"
                 }
+                val roomDb = GuestExpenseDatabase.getInstance(app)
                 val dataSource = if (currentUser != null) {
                     val databaseId = app.getString(R.string.firestore_database_id)
                     val db = FirebaseFirestore.getInstance(databaseId)
                     FirestoreExpenseDataSource(ExpenseRepository(db), currentUser.uid)
                 } else {
-                    val dao = GuestExpenseDatabase.getInstance(app).guestExpenseDao()
-                    LocalGuestRepository(dao)
+                    LocalGuestRepository(roomDb.guestExpenseDao())
                 }
-                ExpenseViewModel(dataSource, sessionKey)
+                val categoryRepository = CategoryConfigRepository(roomDb.categoryConfigDao())
+                ExpenseViewModel(dataSource, categoryRepository, sessionKey)
             }
         }
     )
@@ -182,10 +187,12 @@ private fun ExpenseControlRoot(
     val controls by viewModel.controls.collectAsStateWithLifecycle()
     val expensesState by viewModel.expensesState.collectAsStateWithLifecycle()
     val settings by viewModel.settingsState.collectAsStateWithLifecycle()
+    val categories by viewModel.categoriesState.collectAsStateWithLifecycle()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var showAccountMenu by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
+    var showCategorySettingsDialog by remember { mutableStateOf(false) }
     var showExpenseSheet by remember { mutableStateOf(false) }
     var editingExpense by remember { mutableStateOf<Expense?>(null) }
 
@@ -229,14 +236,14 @@ private fun ExpenseControlRoot(
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
-                            if (isGuest) {
+                            if (currentUser == null) {
                                 Text(
                                     text = stringResource(R.string.guest_mode_subtitle),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.tertiary
                                 )
                             } else {
-                                currentUser?.displayName?.takeIf { it.isNotBlank() }?.let { name ->
+                                currentUser.displayName?.takeIf { it.isNotBlank() }?.let { name ->
                                     Text(
                                         text = "Hola, ${name.substringBefore(" ")}",
                                         style = MaterialTheme.typography.labelMedium,
@@ -290,7 +297,7 @@ private fun ExpenseControlRoot(
                                 expanded = showAccountMenu,
                                 onDismissRequest = { showAccountMenu = false }
                             ) {
-                                if (isGuest) {
+                                if (currentUser == null) {
                                     DropdownMenuItem(
                                         text = {
                                             Text(
@@ -319,7 +326,7 @@ private fun ExpenseControlRoot(
                                         }
                                     )
                                 } else {
-                                    currentUser?.email?.takeIf { it.isNotBlank() }?.let { email ->
+                                    currentUser.email?.takeIf { it.isNotBlank() }?.let { email ->
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
@@ -333,6 +340,17 @@ private fun ExpenseControlRoot(
                                         )
                                     }
                                 }
+
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.label_manage_categories)) },
+                                    leadingIcon = {
+                                        Icon(Icons.Rounded.Category, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAccountMenu = false
+                                        showCategorySettingsDialog = true
+                                    }
+                                )
 
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.label_set_budget)) },
@@ -392,7 +410,19 @@ private fun ExpenseControlRoot(
                             onClick = { selectedTabIndex = 1 },
                             icon = {
                                 Icon(
-                                    imageVector = if (selectedTabIndex == 1) Icons.Filled.CreditCard else Icons.Outlined.CreditCard,
+                                    imageVector = if (selectedTabIndex == 1) Icons.Filled.History else Icons.Outlined.History,
+                                    contentDescription = stringResource(R.string.tab_history)
+                                )
+                            },
+                            label = { Text(stringResource(R.string.tab_history)) },
+                            modifier = Modifier.testTag("tab_history")
+                        )
+                        NavigationBarItem(
+                            selected = selectedTabIndex == 2,
+                            onClick = { selectedTabIndex = 2 },
+                            icon = {
+                                Icon(
+                                    imageVector = if (selectedTabIndex == 2) Icons.Filled.CreditCard else Icons.Outlined.CreditCard,
                                     contentDescription = stringResource(R.string.tab_credit)
                                 )
                             },
@@ -400,11 +430,11 @@ private fun ExpenseControlRoot(
                             modifier = Modifier.testTag("tab_credit")
                         )
                         NavigationBarItem(
-                            selected = selectedTabIndex == 2,
-                            onClick = { selectedTabIndex = 2 },
+                            selected = selectedTabIndex == 3,
+                            onClick = { selectedTabIndex = 3 },
                             icon = {
                                 Icon(
-                                    imageVector = if (selectedTabIndex == 2) Icons.Filled.BarChart else Icons.Outlined.BarChart,
+                                    imageVector = if (selectedTabIndex == 3) Icons.Filled.BarChart else Icons.Outlined.BarChart,
                                     contentDescription = stringResource(R.string.tab_summary)
                                 )
                             },
@@ -428,7 +458,7 @@ private fun ExpenseControlRoot(
                     },
                     text = {
                         Text(
-                            text = if (selectedTabIndex == 1) "Nueva compra"
+                            text = if (selectedTabIndex == 2) "Nueva compra"
                             else stringResource(R.string.fab_new_expense),
                             style = MaterialTheme.typography.labelLarge
                         )
@@ -468,7 +498,19 @@ private fun ExpenseControlRoot(
                             onClick = { selectedTabIndex = 1 },
                             icon = {
                                 Icon(
-                                    imageVector = if (selectedTabIndex == 1) Icons.Filled.CreditCard else Icons.Outlined.CreditCard,
+                                    imageVector = if (selectedTabIndex == 1) Icons.Filled.History else Icons.Outlined.History,
+                                    contentDescription = stringResource(R.string.tab_history)
+                                )
+                            },
+                            label = { Text(stringResource(R.string.tab_history)) },
+                            modifier = Modifier.testTag("tab_history_rail")
+                        )
+                        NavigationRailItem(
+                            selected = selectedTabIndex == 2,
+                            onClick = { selectedTabIndex = 2 },
+                            icon = {
+                                Icon(
+                                    imageVector = if (selectedTabIndex == 2) Icons.Filled.CreditCard else Icons.Outlined.CreditCard,
                                     contentDescription = stringResource(R.string.tab_credit)
                                 )
                             },
@@ -476,11 +518,11 @@ private fun ExpenseControlRoot(
                             modifier = Modifier.testTag("tab_credit_rail")
                         )
                         NavigationRailItem(
-                            selected = selectedTabIndex == 2,
-                            onClick = { selectedTabIndex = 2 },
+                            selected = selectedTabIndex == 3,
+                            onClick = { selectedTabIndex = 3 },
                             icon = {
                                 Icon(
-                                    imageVector = if (selectedTabIndex == 2) Icons.Filled.BarChart else Icons.Outlined.BarChart,
+                                    imageVector = if (selectedTabIndex == 3) Icons.Filled.BarChart else Icons.Outlined.BarChart,
                                     contentDescription = stringResource(R.string.tab_summary)
                                 )
                             },
@@ -536,6 +578,7 @@ private fun ExpenseControlRoot(
                                 0 -> {
                                     DailyExpensesTab(
                                         expenses = state.data,
+                                        categories = categories,
                                         settings = settings,
                                         selectedDateKey = controls.selectedDateKey,
                                         selectedCategoryFilter = controls.selectedCategoryFilter,
@@ -549,13 +592,38 @@ private fun ExpenseControlRoot(
                                         onDeleteExpense = { expense ->
                                             viewModel.deleteExpense(expense.id)
                                         },
-                                        onOpenBudgetSettings = { showBudgetDialog = true }
+                                        onOpenBudgetSettings = { showBudgetDialog = true },
+                                        onOpenCategorySettings = { showCategorySettingsDialog = true }
                                     )
                                 }
 
                                 1 -> {
+                                    HistoryTab(
+                                        expenses = state.data,
+                                        categories = categories,
+                                        settings = settings,
+                                        selectedCategoryId = controls.historyCategoryFilter,
+                                        searchQuery = controls.historySearchQuery,
+                                        selectedPeriod = controls.historyPeriodFilter,
+                                        onSelectCategoryFilter = viewModel::selectHistoryCategoryFilter,
+                                        onSearchQueryChange = viewModel::setHistorySearchQuery,
+                                        onSelectPeriodFilter = viewModel::setHistoryPeriodFilter,
+                                        onClearFilters = viewModel::clearHistoryFilters,
+                                        onEditExpense = { expense ->
+                                            editingExpense = expense
+                                            showExpenseSheet = true
+                                        },
+                                        onDeleteExpense = { expense ->
+                                            viewModel.deleteExpense(expense.id)
+                                        },
+                                        onOpenCategorySettings = { showCategorySettingsDialog = true }
+                                    )
+                                }
+
+                                2 -> {
                                     CreditTab(
                                         expenses = state.data,
+                                        categories = categories,
                                         settings = settings,
                                         onEditExpense = { expense ->
                                             editingExpense = expense
@@ -568,9 +636,14 @@ private fun ExpenseControlRoot(
                                 else -> {
                                     MonthlySummaryTab(
                                         expenses = state.data,
+                                        categories = categories,
                                         settings = settings,
                                         selectedMonthKey = controls.selectedMonthKey,
-                                        onShiftMonth = viewModel::shiftMonth
+                                        onShiftMonth = viewModel::shiftMonth,
+                                        onCategoryClick = { categoryId ->
+                                            viewModel.setHistoryCategoryDirect(categoryId)
+                                            selectedTabIndex = 1
+                                        }
                                     )
                                 }
                             }
@@ -585,18 +658,21 @@ private fun ExpenseControlRoot(
         val currentEdit = editingExpense
         ExpenseSheetDialog(
             initialExpense = currentEdit,
+            categories = categories,
             defaultDateKey = controls.selectedDateKey,
-            defaultPaymentMethod = if (selectedTabIndex == 1) PaymentMethod.CREDIT_CARD else PaymentMethod.CASH,
+            defaultPaymentMethod = if (selectedTabIndex == 2) PaymentMethod.CREDIT_CARD else PaymentMethod.CASH,
             recentCardNames = recentCardNames,
             currencySymbol = settings.currencySymbol.ifBlank { "$" },
             isSaving = controls.isSaving,
+            onOpenCategorySettings = { showCategorySettingsDialog = true },
             onDismiss = { showExpenseSheet = false },
-            onSave = { title, amount, category, dateKey, note, paymentMethod, cardName, installments, creditSettled ->
+            onSave = { title, amount, categoryId, categoryLabel, dateKey, note, paymentMethod, cardName, installments, creditSettled ->
                 if (currentEdit == null) {
                     viewModel.addExpense(
                         title = title,
                         amount = amount,
-                        category = category,
+                        categoryId = categoryId,
+                        categoryLabel = categoryLabel,
                         dateKey = dateKey,
                         note = note,
                         paymentMethod = paymentMethod,
@@ -610,7 +686,8 @@ private fun ExpenseControlRoot(
                         expenseId = currentEdit.id,
                         title = title,
                         amount = amount,
-                        category = category,
+                        categoryId = categoryId,
+                        categoryLabel = categoryLabel,
                         dateKey = dateKey,
                         note = note,
                         paymentMethod = paymentMethod,
@@ -639,6 +716,29 @@ private fun ExpenseControlRoot(
                     onDone = { showBudgetDialog = false }
                 )
             }
+        )
+    }
+
+    if (showCategorySettingsDialog) {
+        CategorySettingsDialog(
+            categories = categories,
+            currencySymbol = settings.currencySymbol.ifBlank { "$" },
+            isSaving = controls.isSaving,
+            onDismiss = { showCategorySettingsDialog = false },
+            onSaveCategory = { id, label, iconKey, colorHex, isEnabled, monthlyLimit, onDone ->
+                viewModel.saveCategoryConfig(
+                    id = id,
+                    label = label,
+                    iconKey = iconKey,
+                    colorHex = colorHex,
+                    isEnabled = isEnabled,
+                    monthlyLimit = monthlyLimit,
+                    onDone = onDone
+                )
+            },
+            onToggleEnabled = viewModel::toggleCategoryEnabled,
+            onDeleteCustomCategory = viewModel::deleteCustomCategory,
+            onResetDefaults = viewModel::resetCategoryDefaults
         )
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.CreditCard
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +66,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.model.CategoryConfig
+import com.example.model.CategoryResolver
 import com.example.model.Expense
 import com.example.model.ExpenseCategory
 import com.example.model.PaymentMethod
@@ -75,16 +78,19 @@ import com.example.util.DateFormatUtils
 @Composable
 fun ExpenseSheetDialog(
     initialExpense: Expense?,
+    categories: List<CategoryConfig>,
     defaultDateKey: String,
     defaultPaymentMethod: PaymentMethod,
     recentCardNames: List<String>,
     currencySymbol: String,
     isSaving: Boolean,
+    onOpenCategorySettings: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
         amount: Double,
-        category: ExpenseCategory,
+        categoryId: String,
+        categoryLabel: String,
         dateKey: String,
         note: String?,
         paymentMethod: PaymentMethod,
@@ -96,6 +102,17 @@ fun ExpenseSheetDialog(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isEditing = initialExpense != null
+
+    val selectableCategories = remember(categories, initialExpense) {
+        val enabled = categories.filter { it.isEnabled }
+        val base = if (enabled.isNotEmpty()) enabled else categories
+        val editId = initialExpense?.categoryId
+        if (editId != null && base.none { it.id == editId }) {
+            base + CategoryResolver.resolve(editId, categories)
+        } else {
+            base
+        }
+    }
 
     var amountText by remember(initialExpense) {
         mutableStateOf(
@@ -110,8 +127,15 @@ fun ExpenseSheetDialog(
     var noteText by remember(initialExpense) {
         mutableStateOf(initialExpense?.note ?: "")
     }
-    var selectedCategory by remember(initialExpense) {
-        mutableStateOf(initialExpense?.categoryEnum ?: ExpenseCategory.FOOD)
+    var selectedCategoryId by remember(initialExpense, selectableCategories) {
+        mutableStateOf(
+            initialExpense?.categoryId
+                ?: selectableCategories.firstOrNull()?.id
+                ?: ExpenseCategory.FOOD.name
+        )
+    }
+    val selectedCategory = remember(selectedCategoryId, categories) {
+        CategoryResolver.resolve(selectedCategoryId, categories)
     }
     var selectedDateKey by remember(initialExpense, defaultDateKey) {
         mutableStateOf(initialExpense?.dateKey?.takeIf { it.isNotBlank() } ?: defaultDateKey)
@@ -140,15 +164,23 @@ fun ExpenseSheetDialog(
     }
 
     val quickSuggestions = remember(selectedCategory) {
-        when (selectedCategory) {
-            ExpenseCategory.FOOD -> listOf("Café", "Desayuno", "Almuerzo", "Cena", "Súper")
-            ExpenseCategory.TRANSPORT -> listOf("Transporte", "Gasolina", "Taxi / App", "Estacionamiento")
-            ExpenseCategory.HOME -> listOf("Limpieza", "Reparación", "Hogar", "Mantenimiento")
-            ExpenseCategory.SHOPPING -> listOf("Ropa", "Regalo", "Tienda", "Personal")
-            ExpenseCategory.HEALTH -> listOf("Farmacia", "Consulta", "Bienestar")
-            ExpenseCategory.LEISURE -> listOf("Cine", "Salida", "Suscripción", "Café con amigos")
-            ExpenseCategory.BILLS -> listOf("Luz", "Agua", "Internet", "Teléfono")
-            ExpenseCategory.OTHER -> listOf("Varios", "Encargo", "Imprevisto")
+        val labelLower = selectedCategory.label.lowercase()
+        when {
+            selectedCategory.id == ExpenseCategory.FOOD.name || "comida" in labelLower ->
+                listOf("Café", "Desayuno", "Almuerzo", "Cena", "Súper")
+            selectedCategory.id == ExpenseCategory.TRANSPORT.name || "transporte" in labelLower ->
+                listOf("Transporte", "Gasolina", "Taxi / App", "Estacionamiento")
+            selectedCategory.id == ExpenseCategory.HOME.name || "vivienda" in labelLower || "hogar" in labelLower ->
+                listOf("Arriendo", "Mercado", "Mantenimiento", "Hogar")
+            selectedCategory.id == ExpenseCategory.SHOPPING.name || "compra" in labelLower ->
+                listOf("Ropa", "Regalo", "Tienda", "Personal")
+            selectedCategory.id == ExpenseCategory.HEALTH.name || "salud" in labelLower ->
+                listOf("Farmacia", "Consulta", "Bienestar")
+            selectedCategory.id == ExpenseCategory.LEISURE.name || "ocio" in labelLower ->
+                listOf("Cine", "Salida", "Suscripción", "Café con amigos")
+            selectedCategory.id == ExpenseCategory.BILLS.name || "servicio" in labelLower ->
+                listOf("Luz", "Agua", "Internet", "Teléfono")
+            else -> listOf(selectedCategory.label, "Encargo", "Imprevisto")
         }
     }
 
@@ -439,20 +471,38 @@ fun ExpenseSheetDialog(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Category grid
-            Text(
-                text = "Categoría",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Categoría",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = onOpenCategorySettings,
+                    modifier = Modifier.testTag("sheet_configure_categories_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Configurar")
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
 
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                ExpenseCategory.entries.forEach { cat ->
-                    val selected = cat == selectedCategory
+                selectableCategories.forEach { cat ->
+                    val selected = cat.id == selectedCategoryId
                     val bgColor = if (selected) cat.accentColor.copy(alpha = 0.16f)
                     else MaterialTheme.colorScheme.surfaceContainerLow
                     val borderColor = if (selected) cat.accentColor
@@ -464,10 +514,10 @@ fun ExpenseSheetDialog(
                             .clip(RoundedCornerShape(14.dp))
                             .background(bgColor)
                             .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
-                            .clickable { selectedCategory = cat }
+                            .clickable { selectedCategoryId = cat.id }
                             .minimumInteractiveComponentSize()
                             .padding(horizontal = 12.dp, vertical = 8.dp)
-                            .testTag("category_chip_${cat.name.lowercase()}")
+                            .testTag("category_chip_${cat.id.lowercase()}")
                     ) {
                         Box(
                             modifier = Modifier
@@ -604,7 +654,8 @@ fun ExpenseSheetDialog(
                         onSave(
                             titleText.trim().ifBlank { selectedCategory.label },
                             parsedAmount,
-                            selectedCategory,
+                            selectedCategory.id,
+                            selectedCategory.label,
                             selectedDateKey,
                             noteText.trim().takeIf { it.isNotEmpty() },
                             selectedPaymentMethod,

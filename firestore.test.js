@@ -142,6 +142,33 @@ test("Authenticated owner: valid Expense and credit card purchases create, updat
     })
   );
 
+  // Custom category created in Room configuration
+  await assertSucceeds(
+    aliceDb.collection("users").doc(ALICE_UID).collection("expenses").doc("exp_custom_cat").set({
+      userId: ALICE_UID,
+      title: "Curso de inglés",
+      amount: 180000,
+      category: "CAT_EDUCACION_123",
+      dateKey: "2026-11-19",
+      monthKey: "2026-11",
+      createdAt: created,
+      updatedAt: created,
+    })
+  );
+
+  await assertFails(
+    aliceDb.collection("users").doc(ALICE_UID).collection("expenses").doc("exp_bad_cat").set({
+      userId: ALICE_UID,
+      title: "Categoría inválida",
+      amount: 50,
+      category: "bad category!",
+      dateKey: "2026-11-19",
+      monthKey: "2026-11",
+      createdAt: created,
+      updatedAt: created,
+    })
+  );
+
   // Reject invalid paymentMethod or out-of-range installments
   await assertFails(
     aliceDb.collection("users").doc(ALICE_UID).collection("expenses").doc("exp_bad_pm").set({
