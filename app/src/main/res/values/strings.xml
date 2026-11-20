@@ -1,0 +1,33 @@
+<resources>
+    <string name="app_name">GastoDiario</string>
+    <string name="tagline_welcome">Tu control diario de gastos, simple y claro</string>
+    <string name="subtitle_welcome">Anota en segundos lo que gastas hoy, organiza por categorías y mantén tu presupuesto bajo control en la nube.</string>
+    <string name="btn_sign_in_google">Continuar con Google</string>
+    <string name="btn_continue_guest">Continuar como invitado</string>
+    <string name="guest_mode_hint">Sin cuenta: tus gastos se guardan solo en este dispositivo.</string>
+    <string name="guest_mode_subtitle">Modo invitado (local)</string>
+    <string name="label_connect_google">Conectar con Google</string>
+    <string name="label_exit_guest">Salir de modo invitado</string>
+    <string name="tab_today">Hoy</string>
+    <string name="tab_credit">Crédito</string>
+    <string name="tab_summary">Resumen</string>
+    <string name="fab_new_expense">Nuevo gasto</string>
+    <string name="label_spent_day">Gastado</string>
+    <string name="label_this_week">Esta semana</string>
+    <string name="label_this_month">Este mes</string>
+    <string name="label_daily_budget">Presupuesto diario</string>
+    <string name="label_set_budget">Meta diaria y moneda</string>
+    <string name="label_sign_out">Cerrar sesión</string>
+    <string name="empty_day_title">Sin gastos registrados</string>
+    <string name="empty_day_subtitle">Toca el botón "Nuevo gasto" para anotar tu primer gasto de este día.</string>
+    <string name="error_generic_load">No se pudieron cargar tus gastos. Revisa tu conexión.</string>
+    <string name="cd_welcome_illustration">Ilustración de billetera y monedas</string>
+    <string name="cd_user_menu">Menú de cuenta y presupuesto</string>
+    <string name="cd_previous_day">Día anterior</string>
+    <string name="cd_next_day">Día siguiente</string>
+    <string name="cd_pick_date">Elegir fecha</string>
+    <string name="cd_previous_month">Mes anterior</string>
+    <string name="cd_next_month">Mes siguiente</string>
+    <string name="cd_edit_expense">Editar gasto</string>
+    <string name="cd_delete_expense">Eliminar gasto</string>
+</resources>

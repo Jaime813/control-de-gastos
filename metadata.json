@@ -1,0 +1,6 @@
+{
+  "name": "GastoDiario",
+  "description": "Aplicación sencilla y práctica para llevar el control diario de tus gastos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

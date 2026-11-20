@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "Configuración personal de presupuesto diario y moneda del usuario.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID del usuario autenticado propietario de esta configuración."
+        },
+        "dailyBudget": {
+          "type": "number",
+          "description": "Meta o límite de gasto diario (0 indica sin límite definido)."
+        },
+        "currencySymbol": {
+          "type": "string",
+          "description": "Símbolo de moneda preferido (ej. COP $, $, €, S/, Q)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Marca de tiempo del servidor al crear la configuración (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Marca de tiempo del servidor de la última actualización (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "dailyBudget", "currencySymbol", "createdAt", "updatedAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Registro individual de un gasto diario (efectivo/débito o compra a crédito/tarjeta).",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID del usuario propietario del gasto."
+        },
+        "title": {
+          "type": "string",
+          "description": "Descripción breve del gasto (1 a 80 caracteres)."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Monto total del gasto (> 0)."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["FOOD", "TRANSPORT", "HOME", "SHOPPING", "HEALTH", "LEISURE", "BILLS", "OTHER"],
+          "description": "Categoría del gasto."
+        },
+        "dateKey": {
+          "type": "string",
+          "description": "Fecha del gasto en formato YYYY-MM-DD."
+        },
+        "monthKey": {
+          "type": "string",
+          "description": "Mes del gasto en formato YYYY-MM para resumen mensual."
+        },
+        "note": {
+          "type": "string",
+          "description": "Nota opcional adicional (máximo 160 caracteres)."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["CASH", "CREDIT_CARD"],
+          "description": "Medio de pago: efectivo/débito (CASH) o tarjeta de crédito/crédito (CREDIT_CARD)."
+        },
+        "cardName": {
+          "type": "string",
+          "description": "Nombre opcional de la tarjeta de crédito (máximo 40 caracteres)."
+        },
+        "installments": {
+          "type": "integer",
+          "description": "Número de cuotas para compras a crédito (1 a 60)."
+        },
+        "creditSettled": {
+          "type": "boolean",
+          "description": "Indica si la compra a crédito ya fue pagada/liquidada."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Marca de tiempo del servidor al crear el gasto (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Marca de tiempo del servidor al actualizar el gasto (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "title", "amount", "category", "dateKey", "monthKey", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserSettings" },
+      "description": "Configuración de presupuesto diario y moneda del usuario."
+    },
+    "/users/{userId}/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Gastos diarios y compras a crédito pertenecientes al usuario."
+    }
+  }
+}
